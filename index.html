@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bit y los Bugs · Programación 1</title>
+<style>
+/* Paleta: noche #14213d, menta #5eead4, ámbar #fbbf24, coral #fb7185 */
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b1224;color:#fff;font-family:"Trebuchet MS",Verdana,sans-serif}
+#wrap{position:relative;width:min(100vw,800px);aspect-ratio:800/440;overflow:hidden;border-radius:10px;background:#7dd3fc}
+canvas{width:100%;height:100%;display:block}
+#hud{position:absolute;top:6px;left:8px;right:8px;display:flex;justify-content:space-between;gap:8px;font-weight:700;font-size:clamp(10px,2.3vw,17px);text-shadow:0 1px 3px #000;pointer-events:none}
+#ov{position:absolute;inset:0;background:rgba(20,33,61,.93);display:flex;padding:10px;overflow:auto}
+#ov.hide{display:none}
+#ov>div{margin:auto;max-width:600px;text-align:center}
+h1{margin:0 0 6px;font-size:clamp(24px,6vw,44px);color:#5eead4}
+h2{margin:0 0 6px;font-size:clamp(18px,4vw,28px);color:#fbbf24}
+p{margin:6px 0;font-size:clamp(12px,2.6vw,17px);line-height:1.4}
+.big{font-size:clamp(40px,10vw,70px);margin:0}
+button{font:inherit;font-weight:700;font-size:clamp(13px,2.8vw,18px);margin:5px;padding:9px 18px;border:0;border-radius:8px;background:#5eead4;color:#14213d;cursor:pointer}
+button.alt{background:#334155;color:#fff}
+button:hover,button:focus-visible{outline:3px solid #fbbf24}
+.opt{display:block;width:100%;text-align:left;background:#e2e8f0}
+.opt:hover{background:#fbbf24}
+.ok{color:#5eead4}.bad{color:#fb7185}
+code{background:#0b1224;padding:2px 6px;border-radius:4px;color:#fbbf24}
+#touch{display:none;position:absolute;bottom:8px;left:8px;right:8px;justify-content:space-between;pointer-events:none}
+#touch div{display:flex;gap:10px}
+#touch button{pointer-events:auto;width:64px;height:64px;font-size:26px;opacity:.7;touch-action:none;padding:0}
+@media (hover:none){#touch{display:flex}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="800" height="440"></canvas>
+  <div id="hud"></div>
+  <div id="touch">
+    <div><button data-k="l">◀</button><button data-k="r">▶</button></div>
+    <button data-k="j">⤒</button>
+  </div>
+  <div id="ov"><div id="box"></div></div>
+</div>
+
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),T=40,W=800,H=440;
+const $=id=>document.getElementById(id);
+
+/* ---------- PREGUNTAS (3 niveles x 4) · o[0] es siempre la correcta; se mezclan al mostrarlas ---------- */
+const Q=[
+ [ {q:'¿Qué es una variable?',o:['Un espacio de memoria con nombre que guarda un dato','Una instrucción que repite código','Un error del programa'],e:'Una variable guarda un valor que puede cambiar mientras el programa se ejecuta.'},
+   {q:'¿Qué tipo de dato conviene para guardar la edad 25?',o:['Entero (int)','Cadena (string)','Booleano (bool)'],e:'La edad es un número sin decimales: un entero.'},
+   {q:'¿Qué tipo de dato es true o false?',o:['Booleano','Entero','Real'],e:'Un booleano solo tiene dos valores: verdadero o falso.'},
+   {q:'Si x = 5 y luego x = x + 2, ¿cuánto vale x?',o:['7','5','52'],e:'Se calcula 5 + 2 y el resultado se guarda de nuevo en x.'} ],
+ [ {q:'¿Qué hace el operador % (módulo)?',o:['Devuelve el residuo de una división','Calcula un porcentaje','Divide y redondea hacia arriba'],e:'El módulo da lo que sobra al dividir. Sirve, por ejemplo, para saber si un número es par.'},
+   {q:'¿Cuánto es 7 % 2?',o:['1','3','3.5'],e:'7 ÷ 2 = 3 y sobra 1.'},
+   {q:'¿Qué estructura ejecuta código solo si se cumple una condición?',o:['if (si)','for','return'],e:'if evalúa una condición y decide si ejecuta el bloque.'},
+   {q:'Si edad = 18, ¿qué condición es verdadera?',o:['edad >= 18','edad < 18','edad > 18'],e:'18 es mayor o igual que 18, pero no es menor ni estrictamente mayor.'} ],
+ [ {q:'¿Cuántas veces se ejecuta for(i=0; i<3; i++)?',o:['3 veces','2 veces','4 veces'],e:'i toma los valores 0, 1 y 2. Cuando llega a 3 la condición falla.'},
+   {q:'¿Qué ciclo repite mientras una condición sea verdadera?',o:['while','if','print'],e:'while evalúa la condición antes de cada repetición.'},
+   {q:'En la mayoría de lenguajes, ¿qué índice tiene el primer elemento de un arreglo?',o:['0','1','-1'],e:'Los índices empiezan en 0.'},
+   {q:'¿Para qué sirve una función?',o:['Para agrupar código reutilizable bajo un nombre','Para guardar un solo valor','Para detener el programa'],e:'Una función se escribe una vez y se llama las veces que haga falta.'} ]
+];
+
+/* ---------- NIVELES: mk(columnas,{q:bloques ?, e:enemigos, g:huecos[inicio,ancho], p:plataformas[col,fila,largo]}) ---------- */
+function mk(n,o){
+  const g=[];for(let r=0;r<11;r++)g.push(Array(n).fill('.'));
+  for(let c=0;c<n;c++){g[9][c]='#';g[10][c]='#'}
+  o.g.forEach(([s,l])=>{for(let c=s;c<s+l;c++){g[9][c]='.';g[10][c]='.'}});
+  o.p.forEach(([c,r,l])=>{for(let i=0;i<l;i++)g[r][c+i]='='});
+  o.q.forEach(c=>g[6][c]='?');
+  return {g,n,e:o.e,flag:(n-3)*T};
+}
+const LV=[
+ {name:'Variables y tipos',goal:'Golpea los bloques ? y responde sobre variables y tipos de datos.',badge:'🥉 Maestro de las Variables',m:()=>mk(45,{q:[8,16,27,33],e:[12,28],g:[[20,2]],p:[[22,7,3]]})},
+ {name:'Operadores y condicionales',goal:'Más bugs y más huecos. Responde sobre operadores y if.',badge:'🥈 Rey de las Condiciones',m:()=>mk(55,{q:[7,15,25,36],e:[11,20,30,40],g:[[18,2],[33,3]],p:[[33,7,3]]})},
+ {name:'Ciclos, arreglos y funciones',goal:'El nivel final. Demuestra que dominas ciclos, arreglos y funciones.',badge:'🥇 Domador de Ciclos',m:()=>mk(65,{q:[6,14,28,38],e:[10,18,29,35,46],g:[[16,2],[24,2],[42,3]],p:[[24,7,2],[42,7,3]]})}
+];
+
+/* ---------- ESTADO ---------- */
+let S={},L,P,frame=0;
+const keys={l:0,r:0,j:0};
+const km={ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r',ArrowUp:'j',w:'j',W:'j',' ':'j'};
+addEventListener('keydown',e=>{if(km[e.key]){keys[km[e.key]]=1;e.preventDefault()}});
+addEventListener('keyup',e=>{if(km[e.key])keys[km[e.key]]=0});
+document.querySelectorAll('#touch button').forEach(b=>{
+  const k=b.dataset.k;
+  b.addEventListener('pointerdown',e=>{keys[k]=1;e.preventDefault()});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>keys[k]=0));
+});
+
+/* Sonidos simples con WebAudio (sin archivos externos) */
+let AC;function sfx(f,d=.12,t='square'){try{AC=AC||new AudioContext();const o=AC.createOscillator(),g=AC.createGain();o.type=t;o.frequency.value=f;g.gain.value=.05;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(e){}}
+
+/* ---------- PANTALLAS ---------- */
+function show(h){$('box').innerHTML=h;$('ov').classList.remove('hide');keys.l=keys.r=keys.j=0}
+function hide(){$('ov').classList.add('hide')}
+function hud(){$('hud').innerHTML=S.lv===undefined?'':`<span>Nivel ${S.lv+1}/3 · ${LV[S.lv].name}</span><span>⭐ ${S.score} &nbsp; ✅ ${S.ok} &nbsp; ${'❤️'.repeat(Math.max(S.lives,0))}</span>`}
+
+function home(){S={mode:'menu'};hud();show(`<p class="big">🤖</p><h1>Bit y los Bugs</h1>
+<p>Corre, salta y responde preguntas de <b>Programación 1</b> para limpiar el código de bugs.</p>
+<button onclick="newGame()">▶ Jugar</button><button class="alt" onclick="help()">Cómo se juega</button>
+<p style="opacity:.7;font-size:12px">Programación 1 · [Curso] · [Integrantes]</p>`)}
+
+function help(){show(`<h2>Cómo se juega</h2>
+<p>🏃 Mover: <code>←</code> <code>→</code> o <code>A</code> <code>D</code> &nbsp; ⤒ Saltar: <code>Espacio</code> o <code>↑</code><br>(en móvil, usa los botones de pantalla)</p>
+<p>🟨 Toca un bloque <b>?</b> y responde: <span class="ok">+100 puntos</span> (más si encadenas aciertos).<br>🐛 Salta sobre los bugs: <span class="ok">+50</span>. Si los tocas pierdes ❤️.<br>❌ Una respuesta incorrecta también cuesta ❤️.<br>🏁 Llega a la bandera para pasar de nivel. Tienes 5 vidas.</p>
+<button onclick="newGame()">▶ Jugar</button><button class="alt" onclick="home()">Volver</button>`)}
+
+function newGame(){S={lv:0,score:0,ok:0,lives:5,streak:0};loadLevel(0)}
+
+function loadLevel(i){
+  S.lv=i;S.qi=0;S.cp=80;S.inv=0;S.snap={s:S.score,k:S.ok};
+  L=LV[i].m();
+  L.en=L.e.map(c=>({x:c*T+4,y:328,w:32,h:32,d:-1,dead:0}));
+  P={x:80,y:300,w:28,h:36,vx:0,vy:0,g:0};
+  S.mode='menu';hud();
+  show(`<h2>Nivel ${i+1}: ${LV[i].name}</h2><p>🎯 ${LV[i].goal}</p><p>Responde bien para conseguir la insignia <b>${LV[i].badge}</b>.</p><button onclick="go()">¡Empezar!</button>`);
+}
+function go(){hide();S.mode='play'}
+
+/* ---------- PREGUNTAS ---------- */
+function ask(c,r){
+  S.mode='q';S.cell=[c,r];
+  const d=Q[S.lv][S.qi++%4];
+  const opts=d.o.map((t,i)=>[t,i]).sort(()=>Math.random()-.5);
+  S.cur=d;
+  show(`<h2>Pregunta</h2><p style="font-size:clamp(14px,3.2vw,20px)"><b>${d.q}</b></p>`+
+    opts.map(([t,i])=>`<button class="opt" onclick="ans(${i})">${t}</button>`).join(''));
+}
+function ans(i){
+  const [c,r]=S.cell;L.g[r][c]='u';
+  let msg;
+  if(i===0){
+    S.streak++;S.ok++;const pts=100+25*Math.min(S.streak-1,4);S.score+=pts;sfx(880,.2);
+    msg=`<h2 class="ok">✅ ¡Correcto! +${pts}</h2>${S.streak>1?`<p>🔥 Racha de ${S.streak}</p>`:''}`;
+  }else{
+    S.streak=0;S.lives--;sfx(150,.3,'sawtooth');
+    msg=`<h2 class="bad">❌ Casi...</h2><p>La respuesta era: <b>${S.cur.o[0]}</b></p>`;
+  }
+  hud();
+  show(msg+`<p>${S.cur.e}</p><button onclick="${S.lives<=0?'lose()':'go()'}">Continuar</button>`);
+}
+
+/* ---------- FINALES ---------- */
+function levelDone(){
+  S.mode='menu';S.score+=200;sfx(660,.4,'triangle');hud();
+  if(S.lv<2)show(`<p class="big">🏁</p><h2>¡Nivel ${S.lv+1} completado!</h2><p>Insignia ganada: <b>${LV[S.lv].badge}</b></p><p>Bonus de nivel +200 · Puntos: ⭐ ${S.score}</p><button onclick="loadLevel(${S.lv+1})">Siguiente nivel</button>`);
+  else{
+    const m=S.ok>=11?'🥇 Medalla de Oro':S.ok>=8?'🥈 Medalla de Plata':'🥉 Medalla de Bronce';
+    show(`<p class="big">🏆</p><h1>¡Ganaste!</h1><p>Limpiaste todos los bugs. Ya eres <b>programador/a junior</b>.</p><h2>${m}</h2><p>⭐ ${S.score} puntos · ✅ ${S.ok}/12 respuestas correctas</p><button onclick="newGame()">Jugar otra vez</button><button class="alt" onclick="home()">Inicio</button>`);
+  }
+}
+function lose(){
+  S.mode='menu';
+  show(`<p class="big">🐛</p><h1 style="color:#fb7185">¡Los bugs ganaron!</h1><p>Te quedaste sin vidas, pero cada error enseña algo. Repasa y vuelve a intentarlo.</p><p>⭐ ${S.score} puntos · ✅ ${S.ok} correctas</p><button onclick="retry()">Reintentar nivel</button><button class="alt" onclick="home()">Inicio</button>`);
+}
+function retry(){S.score=S.snap.s;S.ok=S.snap.k;S.lives=5;S.streak=0;loadLevel(S.lv)}
+
+/* ---------- FÍSICA ---------- */
+const solid=(c,r)=>{if(c<0)return true;if(c>=L.n||r<0||r>10)return false;return '#=?u'.includes(L.g[r][c])};
+function moveX(o,dx){
+  o.x+=dx;const r0=Math.floor(o.y/T),r1=Math.floor((o.y+o.h-1)/T),c=dx>0?Math.floor((o.x+o.w)/T):Math.floor(o.x/T);
+  for(let r=r0;r<=r1;r++)if(solid(c,r)){if(o===P&&L.g[r]&&L.g[r][c]==='?')ask(c,r);o.x=dx>0?c*T-o.w-.01:(c+1)*T;return true}
+  return false;
+}
+function moveY(o,dy){
+  o.y+=dy;const c0=Math.floor(o.x/T),c1=Math.floor((o.x+o.w-1)/T),r=dy>0?Math.floor((o.y+o.h)/T):Math.floor(o.y/T);
+  for(let c=c0;c<=c1;c++)if(solid(c,r)){
+    if(L.g[r]&&L.g[r][c]==='?'&&S.mode==='play')ask(c,r);
+    o.y=dy>0?r*T-o.h-.01:(r+1)*T;if(dy>0)o.g=1;o.vy=0;return;
+  }
+}
+function hurt(fall){
+  S.lives--;S.streak=0;S.inv=90;sfx(150,.3,'sawtooth');hud();
+  if(S.lives<=0){lose();return}
+  if(fall){P.x=S.cp;P.y=300;P.vy=0}else P.vy=-8;
+}
+
+function update(){
+  frame++;
+  P.vx=((keys.r?1:0)-(keys.l?1:0))*4;
+  moveX(P,P.vx);
+  if(S.mode!=='play')return;
+  if(keys.j&&P.g){P.vy=-12.5;sfx(520,.1)}
+  P.vy=Math.min(P.vy+.6,14);P.g=0;moveY(P,P.vy);
+  if(S.mode!=='play')return;
+  if(S.inv>0)S.inv--;
+  if(P.y>H+40)hurt(true);
+  if(S.mode!=='play')return;
+  for(const e of L.en){
+    if(e.dead)continue;
+    const ahead=Math.floor((e.x+(e.d>0?e.w:0)+e.d*2)/T),below=Math.floor((e.y+e.h+2)/T);
+    if(moveX(e,e.d*1.2)||!solid(ahead,below))e.d*=-1;
+    if(P.x<e.x+e.w&&P.x+P.w>e.x&&P.y<e.y+e.h&&P.y+P.h>e.y){
+      if(P.vy>0&&P.y+P.h-e.y<22){e.dead=1;P.vy=-9;S.score+=50;sfx(700,.1);hud()}
+      else if(!S.inv){hurt(false);if(S.mode!=='play')return}
+    }
+  }
+  if(P.x+P.w>L.flag)levelDone();
+  // checkpoint: último punto seguro tras avanzar
+  if(P.g&&P.x>S.cp+300)S.cp=P.x;
+}
+
+/* ---------- DIBUJO ---------- */
+function draw(){
+  if(!L)return;
+  const cam=Math.max(0,Math.min(P.x-W/3,L.n*T-W));
+  ctx.fillStyle=['#7dd3fc','#fdba74','#a78bfa'][S.lv||0];ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,.7)';
+  for(let i=0;i<8;i++){const x=((i*260-cam*.3)%(W+200)+W+200)%(W+200)-100;ctx.beginPath();ctx.arc(x,60+i%3*40,28,0,7);ctx.arc(x+30,68+i%3*40,22,0,7);ctx.fill()}
+  ctx.save();ctx.translate(-cam,0);
+  const c0=Math.floor(cam/T),c1=c0+21;
+  for(let r=0;r<11;r++)for(let c=c0;c<=c1&&c<L.n;c++){
+    const t=L.g[r][c],x=c*T,y=r*T;
+    if(t==='#'){ctx.fillStyle='#92400e';ctx.fillRect(x,y,T,T);if(!solid(c,r-1)){ctx.fillStyle='#22c55e';ctx.fillRect(x,y,T,9)}}
+    else if(t==='='){ctx.fillStyle='#b45309';ctx.fillRect(x,y,T,T);ctx.strokeStyle='#78350f';ctx.strokeRect(x+1,y+1,T-2,T-2)}
+    else if(t==='?'||t==='u'){ctx.fillStyle=t==='?'?'#fbbf24':'#94a3b8';ctx.fillRect(x,y,T,T);ctx.strokeStyle='#14213d';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,T-2,T-2);
+      ctx.fillStyle='#14213d';ctx.font='bold 26px sans-serif';ctx.textAlign='center';ctx.fillText(t==='?'?'?':'✓',x+T/2,y+29)}
+  }
+  ctx.font='34px serif';ctx.textAlign='left';ctx.textBaseline='bottom';
+  ctx.fillStyle='#14213d';ctx.fillRect(L.flag+8,280,4,80);ctx.fillText('🏁',L.flag+8,300);
+  ctx.font='30px serif';
+  L.en.forEach(e=>{if(!e.dead)ctx.fillText('🐛',e.x-1,e.y+e.h+2)});
+  if(!(S.inv>0&&frame%8<4)){ctx.font='34px serif';ctx.fillText('🤖',P.x-3,P.y+P.h+2)}
+  ctx.restore();ctx.textBaseline='alphabetic';
+}
+
+function loop(){if(S.mode==='play')update();draw();requestAnimationFrame(loop)}
+home();loop();
+</script>
+</body>
+</html>
