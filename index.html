@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bit y los Bugs · Programación 1</title>
+<title>Bit y los Bugs · Cibersociedad</title>
 <style>
 /* Paleta: noche #14213d, menta #5eead4, ámbar #fbbf24, coral #fb7185 */
 *{box-sizing:border-box}
@@ -81,8 +81,8 @@ const LV=[
 let S={},L,P,frame=0;
 const keys={l:0,r:0,j:0};
 const km={ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r',ArrowUp:'j',w:'j',W:'j',' ':'j'};
-addEventListener('keydown',e=>{if(km[e.key]){keys[km[e.key]]=1;e.preventDefault()}});
-addEventListener('keyup',e=>{if(km[e.key])keys[km[e.key]]=0});
+addEventListener('keydown',e=>{if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return;if(km[e.key]){keys[km[e.key]]=1;e.preventDefault()}});
+addEventListener('keyup',e=>{if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return;if(km[e.key])keys[km[e.key]]=0});
 document.querySelectorAll('#touch button').forEach(b=>{
   const k=b.dataset.k;
   b.addEventListener('pointerdown',e=>{keys[k]=1;e.preventDefault()});
@@ -95,19 +95,26 @@ let AC;function sfx(f,d=.12,t='square'){try{AC=AC||new AudioContext();const o=AC
 /* ---------- PANTALLAS ---------- */
 function show(h){$('box').innerHTML=h;$('ov').classList.remove('hide');keys.l=keys.r=keys.j=0}
 function hide(){$('ov').classList.add('hide')}
-function hud(){$('hud').innerHTML=S.lv===undefined?'':`<span>Nivel ${S.lv+1}/3 · ${LV[S.lv].name}</span><span>⭐ ${S.score} &nbsp; ✅ ${S.ok} &nbsp; ${'❤️'.repeat(Math.max(S.lives,0))}</span>`}
+function hud(){$('hud').innerHTML=S.lv===undefined?'':`<span>👤 ${S.name||'Jugador'} · Nivel ${S.lv+1}/3 · ${LV[S.lv].name}</span><span>⭐ ${S.score} &nbsp; ✅ ${S.ok} &nbsp; ${'❤️'.repeat(Math.max(S.lives,0))}</span>`}
 
 function home(){S={mode:'menu'};hud();show(`<p class="big">🤖</p><h1>Bit y los Bugs</h1>
-<p>Corre, salta y responde preguntas de <b>Programación 1</b> para limpiar el código de bugs.</p>
-<button onclick="newGame()">▶ Jugar</button><button class="alt" onclick="help()">Cómo se juega</button>
+<p>Corre, salta y responde preguntas de <b>Cibersociedad</b> para limpiar el código de bugs.</p>
+<button onclick="askName()">▶ Jugar</button><button class="alt" onclick="help()">Cómo se juega</button>
 `)}
+function askName(){S.mode='menu';hud();show(`<h2>¿Cómo te llamas?</h2>
+<p>Ingresa tu nombre de jugador:</p>
+<input id="nameInput" type="text" maxlength="20" placeholder="Tu nombre" style="font:inherit;font-size:clamp(14px,3vw,20px);padding:8px 12px;border-radius:8px;border:0;width:80%;max-width:320px;text-align:center;background:#fff;color:#14213d">
+<br>
+<button onclick="startWithName()">Comenzar</button><button class="alt" onclick="home()">Volver</button>`);
+setTimeout(()=>{const el=$('nameInput');if(el){el.focus();el.addEventListener('keydown',e=>{if(e.key==='Enter')startWithName();});}},50);}
+function startWithName(){const el=$('nameInput');const name=(el?el.value:'').trim().slice(0,20)||'Jugador';S.name=name;newGame();}
 
 function help(){show(`<h2>Cómo se juega</h2>
 <p>🏃 Mover: <code>←</code> <code>→</code> o <code>A</code> <code>D</code> &nbsp; ⤒ Saltar: <code>Espacio</code> o <code>↑</code><br>(en móvil, usa los botones de pantalla)</p>
 <p>🟨 Toca un bloque <b>?</b> y responde: <span class="ok">+100 puntos</span> (más si encadenas aciertos).<br>🐛 Salta sobre los bugs: <span class="ok">+50</span>. Si los tocas pierdes ❤️.<br>❌ Una respuesta incorrecta también cuesta ❤️.<br>🏁 Llega a la bandera para pasar de nivel. Tienes 5 vidas.</p>
-<button onclick="newGame()">▶ Jugar</button><button class="alt" onclick="home()">Volver</button>`)}
+<button onclick="askName()">▶ Jugar</button><button class="alt" onclick="home()">Volver</button>`)}
 
-function newGame(){S={lv:0,score:0,ok:0,lives:5,streak:0};loadLevel(0)}
+function newGame(){const nm=S.name;S={lv:0,score:0,ok:0,lives:5,streak:0,name:nm||'Jugador'};loadLevel(0)}
 
 function loadLevel(i){
   S.lv=i;S.qi=0;S.cp=80;S.inv=0;S.snap={s:S.score,k:S.ok};
